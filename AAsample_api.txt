@@ -1,0 +1,273 @@
+me.bFunction.Success = false;
+me.bFunction.Failure = false;
+
+' Set up variables to run and be garbage collected within the 
+' scope of this script
+dim xm as String;
+dim buf as String;
+dim i as Integer;
+dim doc as System.Xml.XmlDocument; 
+dim node as System.Xml.XmlNode; 
+dim nodeList as System.Xml.XmlNodeList;
+dim ns As System.Xml.XmlNamespaceManager;
+buf = me.IMESCallTypeEnum[me.IMESCallType];
+
+'JIRA WWAS-270 
+dim numFields as integer;
+if me.NumberOfFields &gt; 0 then
+	numFields = me.NumberOfFields;
+else
+n	umFields = me.Value.Dimension1;
+endif;
+
+'***************************************************
+' Reset UDAs so the previous values don't linger
+'***************************************************
+
+me.A_status = "";
+me.A_Exception = "";
+me.A_StatusString = "";
+me.ELCAPI_Response = "";
+System.AppDomain.CurrentDomain.SetData(Me.HierarchicalName + ".ErrorMessage","");
+
+'***************************************************
+' New for MfgToolkit
+'***************************************************
+
+Dim t As System.DateTime;
+t = Now();
+
+IF me.Debug &gt; 5 THEN LogMessage("Begin " + MethodToInvoke); ENDIF;
+
+Dim args[1] As System.Object;
+
+MethodToInvoke  = me.MethodToInvoke;
+dllLocation  = me.config_ApplicationServerDLLS + me.Method_Dll;
+dllInUse  = me.config_ApplicationServerDLLS + me.TagName + "\" + me.Method_Dll;
+
+'JIRA WWAS-270 
+url = me.API_URL; '"http://intra3.mmm.com:80/elcprintapi/services/ELCPrintAPI";
+
+MfgToolkitNS = me.MFGToolkitNS_Enum[me.MFGToolkitNS];
+
+IF me.Debug &gt; 25 THEN
+  LogMessage("About to create new ELCAPI Instance parmaters are");
+  LogMessage("dllLocation = " + dllLocation);
+  LogMessage("dllInUse = " + dllInUse);
+ENDIF;
+
+PDMSAPI = New MMM.MFG.Toolkit.IMES.AccessDLLTest.AccessDLL(dllLocation, dllInUse);
+'JIRA WWAS-200
+MfgToolkitNS = PDMSAPI.myAssembly.GetType(MfgToolkitNS, False, True).FullName;
+
+IF me.Debug &gt; 25 THEN
+  LogMessage("About to create new instannce ManfgAPI Instance parmaters are");
+  LogMessage("MfgToolkitNS = " + MfgToolkitNS);
+  LogMessage("url = " + url);
+ENDIF;
+
+IF me.SentinelConnectionStr &lt;&gt; "" THEN
+	'JIRA WWAS-282 
+	if me.debug &gt; 0 then logmessage("Sentinel connectionstring detected"); endif;
+	dim parms[3] as Object;
+	parms[1] = System.Convert.ToString(url);
+	parms[2] = System.Convert.ToString(me.SentinelConnectionStr);
+	parms[3] = System.Convert.ToString(me.SentinelLabelPath);
+	PDMSAPI.CreateNewInstance(MfgToolkitNS ,parms);
+ELSE
+	'JIRA WWAS-282
+	PDMSAPI.CreateNewInstance(MfgToolkitNS ,url);
+ENDIF;
+
+If (NULL == PDMSAPI.myInstance) or (PDMSAPI.BasicErrorHand.Msg &lt;&gt; NULL) Then 
+  If StringLen(PDMSAPI.BasicErrorHand.Msg) &gt; 0 Then
+    LogMessage("***********************************************************************");
+    LogMessage("API Request Failure - Bad Namespace or dll (PDMSAPI)");
+    LogMessage(PDMSAPI.BasicErrorHand.Msg);
+    LogMessage("***********************************************************************");
+    System.AppDomain.CurrentDomain.SetData(Me.HierarchicalName + ".ErrorMessage",PDMSAPI.BasicErrorHand.Msg);
+  EndIf;
+EndIf;
+
+IF me.Debug &gt; 25 THEN LogMessage("Created PDMSAPI Instance"); ENDIF;
+
+
+'***************************************************
+' TEMPLATE WORK: SET THESE - per UDAs
+'***************************************************
+
+'***************************************************
+' Special for ELC MfgToolkit Functions - set these!
+'***************************************************
+Dim reqStr as string;
+
+' To send the correct xml - the type has to be determined
+' doc types for laserjet forms
+' gs types for labels 
+'JIRA WWAS-111 label type and MMM_ID_nbr needs to be set by adapter.
+'If StringInString(me.FormatName, "Load Ticket", 1, 0 ) &gt; 0 Then 
+'	me.RequestType = "doc";
+'Else
+'	me.RequestType = "gs";
+'	me.MMM_Id_Nbr = MyContainer.GetLoadDetails.P_mmm_id_nbr[1];
+'Endif;
+
+If me.RequestType == "gs" Then
+	reqStr = "&lt;?xml version=""1.0""?&gt;";
+	reqStr = reqStr + "&lt;apiRequest&gt;&lt;" + me.RequestType + "Request&gt;";
+	reqStr = reqStr + "&lt;mmmId&gt;" + me.MMM_Id_Nbr + "&lt;/mmmId&gt;";
+	reqStr = reqStr + "&lt;request&gt;";
+	reqStr = reqStr + "&lt;facilityName&gt;" + me.FacilityCode + "&lt;/facilityName&gt;";
+	reqStr = reqStr + "&lt;workCenterCode&gt;" + me.WorkCenterCode + "&lt;/workCenterCode&gt;";
+	reqStr = reqStr + "&lt;formatName&gt;" + me.FormatName + "&lt;/formatName&gt;";
+	reqStr = reqStr + "&lt;copies&gt;" + me.Copies + "&lt;/copies&gt;";
+	reqStr = reqStr + "&lt;printerName&gt;" + me.PrinterName + "&lt;/printerName&gt;";
+	reqStr = reqStr + "&lt;preferenceName&gt;" + me.PreferenceName + "&lt;/preferenceName&gt;";
+Endif;
+
+If me.RequestType == "doc" Then
+	reqStr = "&lt;?xml version=""1.0""?&gt;";
+	reqStr = reqStr + "&lt;apiRequest&gt;&lt;" + me.RequestType + "Request&gt;";
+	reqStr = reqStr + "&lt;request&gt;";
+	reqStr = reqStr + "&lt;facilityName&gt;" + me.FacilityCode + "&lt;/facilityName&gt;";
+	reqStr = reqStr + "&lt;workCenterCode&gt;" + me.WorkCenterCode + "&lt;/workCenterCode&gt;";
+	reqStr = reqStr + "&lt;formatName&gt;" + me.FormatName + "&lt;/formatName&gt;";
+	reqStr = reqStr + "&lt;copies&gt;" + me.Copies + "&lt;/copies&gt;";
+	reqStr = reqStr + "&lt;printerName&gt;" + me.PrinterName + "&lt;/printerName&gt;";
+	reqStr = reqStr + "&lt;preferenceName&gt;" + me.PreferenceName + "&lt;/preferenceName&gt;";
+Endif;
+
+'JIRA WWAS-270
+For i = 1 to numFields 'me.Value.Dimension1
+  	IF StringLen(me.Value[i]) &gt; 0 THEN 
+    	IF me.Debug &gt; 25 THEN LogMessage(me.Name[i] + " = " + me.Value[i]); ENDIF; 
+    		reqStr = reqStr + "&lt;field name=""" + me.Name[i] + """ value=""" + StringUpper(me.Value[i]) + """&gt;&lt;/field&gt;";
+	ENDIF;
+Next;
+
+reqStr = reqStr + "&lt;/request&gt;&lt;/" + me.RequestType + "Request&gt;&lt;/apiRequest&gt;";
+
+'****************************************************************
+' Below is a functional request string that will work for testing
+'reqStr = "&lt;?xml version=""1.0""?&gt;&lt;apiRequest&gt;&lt;docRequest&gt;&lt;request&gt;&lt;facilityName&gt;H5&lt;/facilityName&gt;&lt;workCenterCode&gt;Office Testing&lt;/workCenterCode&gt;&lt;formatName&gt;TSSD Load Ticket&lt;/formatName&gt;&lt;copies&gt;1&lt;/copies&gt;&lt;printerName&gt;IT 8150DN&lt;/printerName&gt;&lt;preferenceName&gt;TSSD Load Ticket&lt;/preferenceName&gt;&lt;field name=""LOAD_ID"" value=""12324"" /&gt;&lt;field name=""BATCH_NBR"" value=""4344"" /&gt;&lt;field name=""UNIT_NBR"" value=""0001"" /&gt;&lt;field name=""RUN_NBR"" value=""9999"" /&gt;&lt;field name=""INVENTORY_QTY"" value=""1"" /&gt;&lt;field name=""INVENTORY_UOM"" value=""EA"" /&gt;&lt;field name=""MMM_FACILITY_CODE"" value=""H5"" /&gt;&lt;field name=""MFG_ORDER_NBR"" value=""M24552"" /&gt;&lt;field name=""ITEM_DESC"" value=""Ricks Test Part"" /&gt;&lt;field name=""CREATE_DATETIME"" value=""10/02/09"" /&gt;&lt;field name=""MMM_ID_NBR"" value=""12345678901"" /&gt;&lt;field name=""REPORTING_QTY"" value=""1"" /&gt;&lt;field name=""REPORTING_UOM"" value=""EA"" /&gt;&lt;/request&gt;&lt;/docRequest&gt;&lt;/apiRequest&gt;";
+'****************************************************************
+
+' log the xml request
+LogMessage(reqStr);
+
+
+'The Response:
+
+IF me.config_ResponseAsString == False THEN
+
+  logmessage("config_ResponseAsString needs to be set to true");
+  me.bFunction.Failure = true;
+
+ELSE
+  'Response As string
+  myargs[1] = reqStr;
+  ResponseString = PDMSAPI.InvokemyMethod(MethodToInvoke , myargs);
+  IF PDMSAPI.BasicErrorHand.Msg == NULL THEN
+    LogMessage(ResponseString );
+
+    xm = ResponseString;
+    'logmessage(xm);
+    '***************************************************
+    ' Perform the Post Processing
+    '***************************************************
+
+    buf = "mesapi/schemas/version1.0/" + buf + "response";
+
+    doc = new System.Xml.XmlDocument(); 
+    ' NO NEED FOR A NAMESPACE WITH ELC WEB SERVICE
+    'ns = new  System.Xml.XmlNamespaceManager(doc.NameTable);
+    'ns.AddNamespace("http://webservice.printapi.elc.mmm.com", buf);
+    doc.LoadXML(xm);
+
+    '***************************************************
+    ' All P_ and A_ UDAs should be set here from XML
+    '***************************************************
+
+	' *** ATTRIBUTE VALUES ***
+	' If UDA begins with 'A_' search response XML for 'success_ind' type attributes
+	nodeList = doc.SelectNodes("//status", ns); 	'apiResponse/result/
+
+	For Each node in nodeList
+		'me.A_Status = node.InnerText;
+		me.A_StatusString = node.InnerText;
+		IF me.A_StatusString == "success" THEN 'Response is either "success" or "failed"
+			me.A_Status = TRUE;
+		ELSE
+			me.A_Status = FALSE;
+		ENDIF;
+
+	Next;
+	logmessage("Status = " + me.A_StatusString);
+	me.ELCAPI_Response = stringleft(ResponseString,1000);
+	logmessage("ResponseString= " + ResponseString);
+	logmessage("me.ELCAPI_Response= " + me.ELCAPI_Response );
+
+	' *** ATTRIBUTE VALUES ***
+	' If UDA begins with 'A_' search response XML for 'success_ind' type attributes
+	nodeList = doc.SelectNodes("//exception", ns); 	'apiResponse/result/
+
+	For Each node in nodeList
+		me.A_Exception = node.InnerText;
+	Next;
+	logmessage("Exception = " + me.A_Exception);
+
+	'***************************************************
+	' Reset the request UDAs
+	'***************************************************
+	' Special UDAs to set for ELC print function
+	' get from IMES SPROC function ItemMaster Extended Columns 
+	If me.Debug &lt; 25 Then	
+		me.FormatName = "";
+		me.Copies = 1;
+		me.PrinterName = "";
+		me.PreferenceName = "";
+		me.FacilityCode = "";
+		me.WorkCenterCode = "";
+		'JIRA WWAS-111 DSC 03/30/2011 reset MMM_Id_Nbr (needs to be set by adapter)
+		me.MMM_Id_Nbr = "";
+
+		' Clear old responses
+		For i = 1 to me.Value.Dimension1
+			me.Value[i] = "";
+		Next;
+	Endif;
+  ELSE
+      logmessage("Request Failure");
+      me.bFunction.Failure = True;
+  ENDIF;
+ENDIF;
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Checking for Errors  
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+IF PDMSAPI.BasicErrorHand.Msg &lt;&gt; NULL THEN
+  me.bFunction.Failure = True;
+  If  StringLen(PDMSAPI.BasicErrorHand.Msg) &gt; 0 Then
+
+    LogMessage("***********************************************************************");
+    LogMessage("API Request Failure");
+    LogMessage(PDMSAPI.BasicErrorHand.Msg);
+    LogMessage("***********************************************************************");
+    System.AppDomain.CurrentDomain.SetData(Me.HierarchicalName + ".ErrorMessage",PDMSAPI.BasicErrorHand.Msg);
+
+    'Create PDMS Service Request on failure if configured to do so.''''''''''''''''''
+
+    LogMessage("API Request Failed, Creating a Request");
+    IF me.config_WriteToEventLogger == True THEN
+      PDMSAPI.BasicErrorHand.WriteToEventLogger();
+    ENDIF;
+
+  ENDIF;
+ELSE
+  me.bFunction.Success = True;
+ENDIF;
+
+
+LogMessage("IMES " + me.IMESCallTypeEnum[me.IMESCallType] + " call completed");
