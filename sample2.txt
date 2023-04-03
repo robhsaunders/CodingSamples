@@ -1,0 +1,368 @@
+' Turn off this trigger so the script only runs once.
+me.t_AA_Function = false;
+
+me.bFunction.Success = false;
+me.bFunction.Failure = false;
+
+' Set up variables to run and be garbage collected within the 
+' scope of this script
+dim xm as String;
+dim buf as String;
+dim i as Integer;
+dim doc as System.Xml.XmlDocument; 
+dim node as System.Xml.XmlNode; 
+dim nodeList as System.Xml.XmlNodeList;
+dim ns As System.Xml.XmlNamespaceManager;
+buf = me.IMESCallTypeEnum[me.IMESCallType];
+
+'***************************************************
+' Reset UDAs so the previous values don't linger
+'***************************************************
+
+me.A_success_ind = "";
+System.AppDomain.CurrentDomain.SetData(Me.HierarchicalName + ".ErrorMessage","");
+
+'***************************************************
+' New for MfgToolkit
+'***************************************************
+
+Dim t As System.DateTime;
+t = Now();
+
+IF me.Debug &gt; 5 THEN LogMessage("Begin " + MethodToInvoke); ENDIF;
+
+Dim args[1] As System.Object;
+
+MethodToInvoke  = me.MethodToInvoke;
+dllLocation  = me.config_ApplicationServerDLLS + "PDMSAPI.dll";
+dllInUse  = me.config_ApplicationServerDLLS + me.TagName + "\PDMSAPI.dll";
+url = MyEngine.IMESSiteUrlEnum[MyEngine.config.IMESCallMode];
+SiteID = MyEngine.IMESServerEnum[MyEngine.config.IMESCallMode] + MyEngine.IMESDatabaseEnum[MyEngine.config.IMESCallMode];
+MfgToolkitNS = me.MFGToolkitNS_Enum[me.MFGToolkitNS];
+'JIRA WWAS-127 	Enable Operator Tracking
+If MyEngine.config.bEnableOperatorTracking == True Then
+	RequestID = StringRight(StringTrim(Me.RequestId,3), 9);
+Else
+	RequestID = StringRight(MyContainer.Container, 9);
+Endif;
+
+args[1] = url;
+
+IF me.Debug &gt; 25 THEN
+  LogMessage("About to create new PDMSAPI Instance parmaters are");
+  LogMessage("dllLocation = " + dllLocation);
+  LogMessage("dllInUse = " + dllInUse);
+ENDIF;
+
+PDMSAPI = New MMM.MFG.Toolkit.IMES.AccessDLLTest.AccessDLL(dllLocation, dllInUse);
+'JIRA WWAS-200 Ignore namespace case
+MfgToolkitNS = PDMSAPI.myAssembly.GetType(MfgToolkitNS, False, True).FullName;
+
+IF me.Debug &gt; 25 THEN
+  LogMessage("About to create new instannce ManfgAPI Instance parmaters are");
+  LogMessage("MfgToolkitNS = " + MfgToolkitNS);
+  LogMessage("url = " + url);
+ENDIF;
+
+PDMSAPI.CreateNewInstance(MfgToolkitNS, url);
+If (NULL == PDMSAPI.myInstance) or (PDMSAPI.BasicErrorHand.Msg &lt;&gt; NULL) Then 
+  If StringLen(PDMSAPI.BasicErrorHand.Msg) &gt; 0 Then
+    LogMessage("***********************************************************************");
+    LogMessage("API Request Failure - Bad Namespace or dll (PDMSAPI)");
+    LogMessage(PDMSAPI.BasicErrorHand.Msg);
+    LogMessage("***********************************************************************");
+    System.AppDomain.CurrentDomain.SetData(Me.HierarchicalName + ".ErrorMessage",PDMSAPI.BasicErrorHand.Msg);
+  EndIf;
+EndIf;
+
+IF me.Debug &gt; 25 THEN LogMessage("Created PDMSAPI Instance"); ENDIF;
+
+dllLocation  = me.config_ApplicationServerDLLS + me.Method_Dll;
+dllInUse  = me.config_ApplicationServerDLLS + me.TagName + "\" + me.Method_DLL;
+RequestType  = me.request;
+
+IF me.Debug &gt; 25 THEN LogMessage("Create Request of type: " + RequestType); ENDIF;
+
+Request = New MMM.MFG.Toolkit.IMES.AccessDLLTest.AccessDLL(dllLocation, dllInUse);
+'JIRA WWAS-200 Ignore namespace case
+RequestType = Request.myAssembly.GetType(RequestType, False, True).FullName;
+Request.CreateNewInstance(RequestType);
+If (NULL == Request.myInstance) or (Request.BasicErrorHand.Msg &lt;&gt; NULL) Then 
+  If StringLen(Request.BasicErrorHand.Msg) &gt; 0 Then
+    LogMessage("***********************************************************************");
+    LogMessage("API Request Failure - Bad Namespace or dll (Request)");
+    LogMessage(Request.BasicErrorHand.Msg);
+    LogMessage("***********************************************************************");
+    System.AppDomain.CurrentDomain.SetData(Me.HierarchicalName + ".ErrorMessage",Request.BasicErrorHand.Msg);
+  EndIf;
+EndIf;
+RequestAttributes[] = Request.GetProperties();
+
+IF me.Debug &gt; 25 THEN LogMessage("Created Request of type: " + RequestType); ENDIF;
+
+
+'***************************************************
+' TEMPLATE WORK: SET THESE - per UDAs
+'***************************************************
+For Each str in RequestAttributes[]
+  IF me.Debug &gt; 25 THEN LogMessage("Request Attribute: " + str); ENDIF;
+  IF (str == "siteid") AND (StringLen(SiteID) &gt; 0) THEN
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + SiteID); ENDIF;
+    request.SetProperty(str, SiteID);
+  ENDIF;
+  IF (str == "requestor_id") AND (StringLen(RequestID) &gt; 0) THEN
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + RequestID); ENDIF;
+    request.SetProperty(str, RequestID);
+  ENDIF;
+
+  IF (str == "mmm_fclt_code") AND (StringLen(me.R_000mmm_fclt_code) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_000mmm_fclt_code); ENDIF; 
+    request.SetProperty(str, me.R_000mmm_fclt_code); 
+  ENDIF;
+  IF (str == "prsn_id") AND (StringLen(me.R_001prsn_id) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_001prsn_id); ENDIF; 
+    request.SetProperty(str, me.R_001prsn_id); 
+  ENDIF;
+  IF (str == "work_center_code") AND (StringLen(me.R_002work_center_code) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_002work_center_code); ENDIF; 
+    request.SetProperty(str, me.R_002work_center_code); 
+  ENDIF;
+  IF (str == "mmm_id_nbr") AND (StringLen(me.R_003mmm_id_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_003mmm_id_nbr); ENDIF; 
+    request.SetProperty(str, me.R_003mmm_id_nbr); 
+  ENDIF;
+  IF (str == "matl_prdn_run_nbr") AND (StringLen(me.R_004matl_prdn_run_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_004matl_prdn_run_nbr); ENDIF; 
+    request.SetProperty(str, me.R_004matl_prdn_run_nbr); 
+  ENDIF;
+  IF (str == "matl_btch_nbr") AND (StringLen(me.R_005matl_btch_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_005matl_btch_nbr); ENDIF; 
+    request.SetProperty(str, me.R_005matl_btch_nbr); 
+  ENDIF;
+  IF (str == "matl_unit_nbr") AND (StringLen(me.R_006matl_unit_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_006matl_unit_nbr); ENDIF; 
+    request.SetProperty(str, me.R_006matl_unit_nbr); 
+  ENDIF;
+  IF (str == "e1_lot_nbr") AND (StringLen(me.R_007e1_lot_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_007e1_lot_nbr); ENDIF; 
+    request.SetProperty(str, me.R_007e1_lot_nbr); 
+  ENDIF;
+  IF (str == "test_mthd_nbr") AND (StringLen(me.R_008test_mthd_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_008test_mthd_nbr); ENDIF; 
+    request.SetProperty(str, me.R_008test_mthd_nbr); 
+  ENDIF;
+  IF (str == "doc_type_code") AND (StringLen(me.R_009doc_type_code) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_009doc_type_code); ENDIF; 
+    request.SetProperty(str, me.R_009doc_type_code); 
+  ENDIF;
+  IF (str == "prop_name") AND (StringLen(me.R_010prop_name) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_010prop_name); ENDIF; 
+    request.SetProperty(str, me.R_010prop_name); 
+  ENDIF;
+  IF (str == "load_id") AND (StringLen(me.R_011load_id) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_011load_id); ENDIF; 
+    request.SetProperty(str, me.R_011load_id); 
+  ENDIF;
+  IF (str == "samp_seq_nbr") AND (StringLen(me.R_012samp_seq_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_012samp_seq_nbr); ENDIF; 
+    request.SetProperty(str, me.R_012samp_seq_nbr); 
+  ENDIF;
+  IF (str == "prod_spec_name") AND (StringLen(me.R_013prod_spec_name) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_013prod_spec_name); ENDIF; 
+    request.SetProperty(str, me.R_013prod_spec_name); 
+  ENDIF;
+  IF (str == "samp_test_loc_desc") AND (StringLen(me.R_014samp_test_loc_desc) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_014samp_test_loc_desc); ENDIF; 
+    request.SetProperty(str, me.R_014samp_test_loc_desc); 
+  ENDIF;
+  IF (str == "matl_samp_loc_id") AND (StringLen(me.R_015matl_samp_loc_id) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_015matl_samp_loc_id); ENDIF; 
+    request.SetProperty(str, me.R_015matl_samp_loc_id); 
+  ENDIF;
+  IF (str == "test_eqpt_id") AND (StringLen(me.R_016test_eqpt_id) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_016test_eqpt_id); ENDIF; 
+    request.SetProperty(str, me.R_016test_eqpt_id); 
+  ENDIF;
+  IF (str == "test_evnt_date") AND (StringLen(me.R_017test_evnt_date) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_017test_evnt_date); ENDIF; 
+    request.SetProperty(str, me.R_017test_evnt_date); 
+  ENDIF;
+  IF (str == "test_rslt_desc") AND (StringLen(me.R_018test_rslt_desc) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_018test_rslt_desc); ENDIF; 
+    request.SetProperty(str, me.R_018test_rslt_desc); 
+  ENDIF;
+  IF (str == "accp_cfrm_ind") AND (StringLen(me.R_019accp_cfrm_ind) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_019accp_cfrm_ind); ENDIF; 
+    request.SetProperty(str, me.R_019accp_cfrm_ind); 
+  ENDIF;
+  IF (str == "test_rslt_rsn_code") AND (StringLen(me.R_020test_rslt_rsn_code) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_020test_rslt_rsn_code); ENDIF; 
+    request.SetProperty(str, me.R_020test_rslt_rsn_code); 
+  ENDIF;
+  IF (str == "retest_ind") AND (StringLen(me.R_021retest_ind) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_021retest_ind); ENDIF; 
+    request.SetProperty(str, me.R_021retest_ind); 
+  ENDIF;
+  IF (str == "comment") AND (StringLen(me.R_022comment) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_022comment); ENDIF; 
+    request.SetProperty(str, me.R_022comment); 
+  ENDIF;
+  IF (str == "evaluation_name") AND (StringLen(me.R_023evaluation_name) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_023evaluation_name); ENDIF; 
+    request.SetProperty(str, me.R_023evaluation_name); 
+  ENDIF;
+  IF (str == "customer_spec_name") AND (StringLen(me.R_024customer_spec_name) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_024customer_spec_name); ENDIF; 
+    request.SetProperty(str, me.R_024customer_spec_name); 
+  ENDIF;
+  IF (str == "mfg_order_nbr") AND (StringLen(me.R_025mfg_order_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_025mfg_order_nbr); ENDIF; 
+    request.SetProperty(str, me.R_025mfg_order_nbr); 
+  ENDIF;
+  IF (str == "mfg_order_operation_seq_nbr") AND (StringLen(me.R_026mfg_order_operation_seq_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_026mfg_order_operation_seq_nbr); ENDIF; 
+    request.SetProperty(str, me.R_026mfg_order_operation_seq_nbr); 
+  ENDIF;
+  IF (str == "property_seq_nbr") AND (StringLen(me.R_027property_seq_nbr) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_027property_seq_nbr); ENDIF; 
+    request.SetProperty(str, me.R_027property_seq_nbr); 
+  ENDIF;
+  IF (str == "product_spec_id") AND (StringLen(me.R_028product_spec_id) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_028product_spec_id); ENDIF; 
+    request.SetProperty(str, me.R_028product_spec_id); 
+  ENDIF;
+  IF (str == "property_spec_id") AND (StringLen(me.R_029property_spec_id) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_029property_spec_id); ENDIF; 
+    request.SetProperty(str, me.R_029property_spec_id); 
+  ENDIF;
+  IF (str == "receipt_id") AND (StringLen(me.R_030receipt_id) &gt; 0) THEN 
+    IF me.Debug &gt; 25 THEN LogMessage(str + " = " + me.R_030receipt_id); ENDIF; 
+    request.SetProperty(str, me.R_030receipt_id); 
+  ENDIF;
+
+Next;
+
+'Create a request File
+IF me.config_CreateRequestFile == True THEN
+  IF me.Debug &gt;= 25 THEN LogMessage("Creating a request File at location: " + me.RequestFile); ENDIF;
+  RequestFile = me.RequestFile;
+  args[1] = RequestFile;
+  request.InvokemyMethod("WriteToFile" , args);
+ENDIF;
+
+
+'The Response:
+
+IF me.config_ResponseAsString == False THEN
+
+  logmessage("config_ResponseAsString needs to be set to true");
+  me.bFunction.Failure = true;
+
+ELSE
+  'Response As string
+  myargs[1] = Request.myInstance.SerializeToString(True);
+  ResponseString  = PDMSAPI.InvokemyMethod(MethodToInvoke , myargs);
+  IF PDMSAPI.BasicErrorHand.Msg == NULL THEN
+    LogMessage(ResponseString );
+
+    xm = ResponseString;
+
+    '***************************************************
+    ' Perform the Post Processing
+    '***************************************************
+
+    If buf == "reportproductionoutput" Then
+      buf = "mesapi/schemas/version1.0/" + buf;
+    Else
+      buf = "mesapi/schemas/version1.0/" + buf + "response";
+    Endif;
+    doc = new System.Xml.XmlDocument(); 
+    ns = new  System.Xml.XmlNamespaceManager(doc.NameTable);
+    ns.AddNamespace("a", buf);
+    doc.LoadXML(xm);
+
+    '***************************************************
+    ' All P_ and A_ UDAs should be set here from XML
+    '***************************************************
+
+	' *** ATTRIBUTE VALUES ***
+	' If UDA begins with 'A_' search response XML for 'success_ind' type attributes
+	nodeList = doc.SelectNodes("//@success_ind", ns); 				
+	For Each node in nodeList
+		me.A_success_ind = node.InnerText;
+	Next;
+
+	'***************************************************
+	' Reset the request UDAs
+	'***************************************************
+	me.R_000mmm_fclt_code = "";
+	me.R_001prsn_id = "";
+	me.R_002work_center_code = "";
+	me.R_003mmm_id_nbr = "";
+	me.R_004matl_prdn_run_nbr = "";
+	me.R_005matl_btch_nbr = "";
+	me.R_006matl_unit_nbr = "";
+	me.R_007e1_lot_nbr = "";
+	me.R_008test_mthd_nbr = "";
+	me.R_009doc_type_code = "";
+	me.R_010prop_name = "";
+	me.R_011load_id = "";
+	me.R_012samp_seq_nbr = "";
+	me.R_013prod_spec_name = "";
+	me.R_014samp_test_loc_desc = "";
+	me.R_015matl_samp_loc_id = "";
+	me.R_016test_eqpt_id = "";
+	me.R_017test_evnt_date = "";
+	me.R_018test_rslt_desc = "";
+	me.R_019accp_cfrm_ind = "";
+	me.R_020test_rslt_rsn_code = "";
+	me.R_021retest_ind = "";
+	me.R_022comment = "";
+	me.R_023evaluation_name = "";
+	me.R_024customer_spec_name = "";
+	me.R_025mfg_order_nbr = "";
+	me.R_026mfg_order_operation_seq_nbr = "";
+	me.R_027property_seq_nbr = "";
+	me.R_028product_spec_id = "";
+	me.R_029property_spec_id = "";
+	me.R_030receipt_id = "";
+
+	'JIRA WWAS-127 Enable Operator Tracking
+	me.RequestId = "";
+
+  ELSE
+      logmessage("Request Failure");
+      me.bFunction.Failure = True;
+  ENDIF;
+ENDIF;
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'Checking for Errors  
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+IF PDMSAPI.BasicErrorHand.Msg &lt;&gt; NULL THEN
+  me.bFunction.Failure = True;
+  If  StringLen(PDMSAPI.BasicErrorHand.Msg) &gt; 0 Then
+
+    LogMessage("***********************************************************************");
+    LogMessage("API Request Failure");
+    LogMessage(PDMSAPI.BasicErrorHand.Msg);
+    LogMessage("***********************************************************************");
+    System.AppDomain.CurrentDomain.SetData(Me.HierarchicalName + ".ErrorMessage",PDMSAPI.BasicErrorHand.Msg);
+
+    'Create PDMS Service Request on failure if configured to do so.''''''''''''''''''
+
+    LogMessage("API Request Failed, Creating a Request");
+    IF me.config_WriteToEventLogger == True THEN
+      PDMSAPI.BasicErrorHand.WriteToEventLogger();
+    ENDIF;
+
+  ENDIF;
+ELSE
+  me.bFunction.Success = True;
+ENDIF;
+
+
+LogMessage("IMES " + me.IMESCallTypeEnum[me.IMESCallType] + " call completed");
