@@ -1,0 +1,149 @@
+#include <adafruit-sht31.h>
+#include <Adafruit_IO_Particle.h>
+#include <Adafruit_IO_Client.h>
+
+#define AIO_KEY "028968e43dda4e6d997f3c5289d69bc2"
+#define TEMP_CHECK_INTERVAL 60000
+
+
+Adafruit_SHT31 sht31 = Adafruit_SHT31();//Air Temperature/Humidity senson SHT31-D from Adafruit - IMPORTANT:  Address pin solder to high
+Adafruit_SHT31 sht31soil = Adafruit_SHT31();//Address should be default to 0x44
+
+TCPClient client;// TCP Client used by Adafruit IO library
+// Create the AIO client object
+Adafruit_IO_Client AIOClient = Adafruit_IO_Client(client, AIO_KEY);
+// Create a feed object to send and get data
+Adafruit_IO_Feed  feedTempF = AIOClient.getFeed("tempF");
+Adafruit_IO_Feed  feedHumidity = AIOClient.getFeed("humidity");
+Adafruit_IO_Feed  feedSoilTemp = AIOClient.getFeed("soilTemp");
+Adafruit_IO_Feed  feedSoilHumidity = AIOClient.getFeed("soilHumidity");
+Adafruit_IO_Feed  feedBatteryVoltage = AIOClient.getFeed("BatteryVoltage");
+Adafruit_IO_Feed  feedExtBatteryVoltage = AIOClient.getFeed("ExtBatteryVoltage");
+
+unsigned long lastTempCheck;    //keep
+int soilTemp;                   //keep
+int soilHumidity;               //keep
+int airTemp;                    //keep
+int airHumidity;                //keep
+float fAirTemp;                 //keep
+float fAirHumidity;             //keep
+float fSoilTemp;                //keep
+float fSoilHumidity;            //keep
+float BatteryVoltage;           //keep
+float ExtBatteryVoltage;
+
+
+int LED_SensorsOn = D7;         //keep
+int Power_SoilSensor = D3;      //keep
+int Power_AirSensor = D4;       //keep
+
+int analogPinA0 = A0;           //Battery Voltage Input
+float voltageInput = 0;//<--------------------------------Changed to float.  need to fix code still-------------------------------------------------------------------------------<<<<<<
+float vAnalogInput = 0;
+float voltageMultiplier = 0;
+
+SystemSleepConfiguration sleepconfig;   //keep
+
+void setup() {
+    
+    sht31.begin(0x45);      //start the Adafruit temp/humidity sensor
+    sht31soil.begin(0x44);
+
+    AIOClient.begin();  // Start the Adafruit IO Client
+    //Particle.function("checkTemp", checkHandler);//Function to manually check temp from particle console
+    pinMode(LED_SensorsOn, OUTPUT);
+    pinMode(Power_SoilSensor, OUTPUT);
+    pinMode(Power_AirSensor, OUTPUT);
+    
+
+}
+
+void loop() {
+
+//if(WiFi.ready()==true){
+    if (lastTempCheck + TEMP_CHECK_INTERVAL < millis()) {
+        lastTempCheck = millis();    
+    //delay(3000);//Delay to make sure it wakes up
+    SystemSleepResult result = System.sleep(sleepconfig);
+    
+    //if(result.wakeupReason() == SystemSleepWakeupReason::BY_RTC){
+    //    wakeReason = "Woke up from RTC";
+    //    Particle.publish("Wake Reason", wakeReason, PRIVATE);
+    //}
+
+
+    digitalWrite(LED_SensorsOn, HIGH);     //LED on to see sensors are active.
+    digitalWrite(Power_SoilSensor, HIGH);  //Turn sensor on/off to conserve battery
+    digitalWrite(Power_AirSensor, HIGH);   //Turn sensor on/off to conserve battery
+    delay(1000);
+        
+    checkAirTemp();
+    delay(1000);
+    checkSoilTemp();
+    checkBatteryVoltage();
+    checkExtBattVoltage();    
+        
+    feedTempF.send(String(airTemp));
+    delay(1000);
+    feedHumidity.send(String(airHumidity));
+    delay(1000);
+    feedSoilTemp.send(String(soilTemp));
+    delay(1000);
+    feedSoilHumidity.send(String(soilHumidity));
+    delay(1000);
+    feedBatteryVoltage.send(String(BatteryVoltage));
+    delay(1000);
+    feedExtBatteryVoltage.send(String(ExtBatteryVoltage));
+    delay(1000);
+    
+    digitalWrite(LED_SensorsOn, LOW);     //LED off, power down sensors
+    digitalWrite(Power_SoilSensor, LOW);  //Turn sensor on/off to conserve battery
+    digitalWrite(Power_AirSensor, LOW);   //Turn sensor on/off to conserve battery    
+    delay(1500);
+        
+    
+    //GoToSleep(); 
+    
+}//LastTempCheck
+
+}
+
+//-------------------------------------------------------------------------------------------------------------Go to sleep
+void GoToSleep(){
+    //SystemSleepConfiguration sleepconfig;
+    sleepconfig.mode(SystemSleepMode::STOP).duration(5min);
+    System.sleep(sleepconfig);
+}
+//-------------------------------------------------------------------------------------------------------------Check soil temperature
+void checkSoilTemp(){
+    fSoilTemp = ((sht31soil.readTemperature() * 1.8) + 32);
+    soilTemp = (int)fSoilTemp;
+    fSoilHumidity = sht31soil.readHumidity();
+    soilHumidity = (int)fSoilHumidity;
+}
+//-------------------------------------------------------------------------------------------------------------Check air temperature
+void checkAirTemp() {
+    fAirTemp = ((sht31.readTemperature() * 1.8) + 32);
+    airTemp = (int)fAirTemp;
+    fAirHumidity = sht31.readHumidity();
+    airHumidity = (int)fAirHumidity;
+ }
+//-------------------------------------------------------------------------------------------------------------Check internal battery voltage
+ void checkBatteryVoltage(){
+     BatteryVoltage = analogRead(BATT) * 0.0011224;
+     //Particle.publish("tempF", String(tempF), PRIVATE); //Publish Event to particle
+ }
+//------------------------------------------------------------------------------------------------------------- Check external battery voltage
+void checkExtBattVoltage(){
+    
+    vAnalogInput = analogRead(analogPinA0) ;
+    voltageMultiplier = analogRead(analogPinA0) * .0013;
+    ExtBatteryVoltage = (analogRead(analogPinA0) * .0013) - .6;    
+    //ExtBatteryVoltage = voltageInput;
+    //voltageInput = (analogRead(analogPinA0) * BATTVOLTAGEMULTIPLIER) + BATTVOLTAGEOFFSET;//read analog pin
+    //Particle.publish("Battery Analog Input", String(vAnalogInput), PRIVATE);
+    //Particle.publish("Battery Input Multi", String(voltageMultiplier), PRIVATE);
+    //Particle.publish("Battery Voltage", String(voltageInput), PRIVATE);
+    
+    
+}
