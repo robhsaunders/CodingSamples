@@ -1,0 +1,87 @@
+If Me.bSCADAScriptsEnabled == True 
+	And (me.WasteGrid.t_CellValueChanged &gt; 0 or me.WasteGrid.t_Writeback &gt; 0) then 'or Me.t_ValidateData.Start &gt; 0) Then
+
+	dim i as integer;
+	dim PreviousStatus as string;
+	dim Status as String;
+	dim WasteCode as String;
+	dim bTriggerRefresh as Boolean;
+	dim bWasteQtyError as Boolean;
+	dim bLoadQtyError as Boolean;
+	dim Quantity as Double;
+
+	dim ConsumeQuantity as double;
+	dim AvailableConsumeQty  as double;
+
+	if me.debug &gt; 0 then logmessage("begin validate script");endif;
+
+	ConsumeQuantity = 0;
+	
+	'AvailableConsumeQty  = Round(MyContainer.Material.CurrentLoadQty, MyEngine.config. Places);
+	AvailableConsumeQty  = Round(MyContainer.Material.CurrentLoadQty, MyContainer.MaxDecimalPlaces);
+	if me.debug &gt; 0 then logmessage("AvailableConsumeQty : " + AvailableConsumeQty );endif;		
+
+	For i = 1 to Me.WasteQty.Dimension1
+		If me.debug &gt; 0 Then logmessage("Starting FOR LOOP:  Waste Qty Dimensions = " + Me.WasteQty.Dimension1); EndIf;
+		{If Me.WasteCauseCode[i] == "" Then
+			Me.WasteQty[i] = 0;
+			Me.WasteStatus[i] = "";
+		EndIf;}
+
+		PreviousStatus = Me.WasteStatus[i];	
+		'Quantity = Round(Me.WasteQty[i], MyEngine.config.MaxDecimalPlaces);
+		Quantity = Round(Me.WasteQty[i], MyContainer.MaxDecimalPlaces);
+		'logmessage("Quantity = " + Quantity); '***************
+
+		'Trigger a refresh if we have rounded the quantity entered;
+		If Quantity &lt;&gt; Me.WasteQty[i] Then
+			If me.debug &gt; 0 Then logmessage("Quantity &lt;&gt; me.WasteQty[i]"); EndIf;
+			bTriggerRefresh = True;
+			Me.WasteQty[i] = Quantity;
+		Endif;
+
+		If Me.WasteCauseCode[i] &lt;&gt; "" Then
+			ConsumeQuantity = ConsumeQuantity + Quantity;
+			'logmessage("Consume Quantity = " + ConsumeQuantity);
+		EndIf;
+
+		'me.ManualConsume.ConsumeQty = ConsumeQuantity;
+		me.WasteGridTotalQty = ConsumeQuantity;
+
+		If Quantity &gt; AvailableConsumeQty  or Quantity &lt; 0
+			 or ( ConsumeQuantity &gt; AvailableConsumeQty  and Quantity &lt;&gt; 0 ) Then
+
+			logmessage("Status Error...  ConsumeQty,AvailQty,Quantity:  " + ConsumeQuantity + ", " + AvailableConsumeQty  + ", " + Quantity);
+			Status = "Error";
+			bWasteQtyError = True;
+		ElseIf Quantity &lt;&gt; 0 and  Me.WasteCauseCode[i] == "" Then
+			bWasteQtyError = True;
+			Status = "Error";
+		Else
+			Status = "";
+		Endif;
+		Me.WasteStatus[i] = Status;
+		If Status &lt;&gt; PreviousStatus Then
+
+			bTriggerRefresh = True;
+		Endif;
+		{If Quantity &lt;&gt; 0 and  Me.WasteCauseCode[i] == ""  Then
+
+			bWasteQtyError = True;	
+		Endif;}
+	Next;
+		
+	If me.bAutoCalcLoadQty == True Then
+		'Me.LoadQty = Round((AvailableConsumeQty  - ConsumeQuantity), MyEngine.config.MaxDecimalPlaces);
+		Me.LoadQty = Round((AvailableConsumeQty  - ConsumeQuantity), MyContainer.MaxDecimalPlaces);
+		Me.bLoadQtyAutoUpdated = True;
+	Elseif me.bAutoCalcLoadQty == False Then
+		'Me.LoadQty = Round(Me.LoadQty, MyEngine.config.MaxDecimalPlaces);
+		Me.LoadQty = Round(Me.LoadQty, MyContainer.MaxDecimalPlaces);
+	Endif;
+	
+	If Me.LoadQty &lt; 0 or Me.LoadQty &gt; Round((AvailableConsumeQty  - ConsumeQuantity), MyContainer.MaxDecimalPlaces)  Then
+		Me.bLoadQtyError = True;	
+	Else
+		Me.bLoadQtyError = False;
+	Endif;
