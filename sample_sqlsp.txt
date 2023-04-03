@@ -1,0 +1,133 @@
+' FUNCTION
+' Template of SPROC function
+      
+' Turn off this trigger so the script only runs once.
+me.t_AA_Function = false;
+    
+' Don't assume the script will finish
+me.bFunction.Success = false;
+me.bFunction.Failure = false;
+
+Dim sqlConnection as System.Data.SqlClient.SqlConnection; 
+Dim sqlCommand as System.Data.SqlClient.SqlCommand; 
+Dim sqlReader as System.Data.SqlClient.SqlDataReader;
+Dim sqlConnectionString as String;
+Dim sqlCommandString as String;
+Dim SP_Parameter as System.Data.SqlClient.SqlParameter;
+Dim j as Integer;
+
+'Clear old responses in case of error and set Dimension1 = 1
+me.P_QC_Disposition_Desc.Dimension1 = 1;
+me.P_AllowFreeFormDispDesc.Dimension1 = 1;
+
+me.P_QC_Disposition_Desc[1] = "";
+me.P_AllowFreeFormDispDesc[1] = "";
+
+sqlConnectionString = MyEngine.config.dbConnectionString.SCADA;
+sqlConnection = new System.Data.SqlClient.SqlConnection(sqlConnectionString); 	
+				
+sqlCommandString = me.SPName;								
+sqlCommand = new System.Data.SqlClient.SqlCommand(sqlCommandString, sqlConnection);				
+sqlCommand.CommandType = System.Data.CommandType.StoredProcedure; 						
+
+' Open Database Connection
+sqlConnection.Open(); 
+logmessage("Connection String = " + sqlConnectionString);
+logmessage("sqlCommandString = " + sqlCommandString);
+logmessage("SQL SPROC Connection Open");
+
+'Set Parameters and Loop through data (see example below)
+'        SP_Parameter = sqlCommand.Parameters.Add("@LoadID", System.Data.SqlDbType.NVarChar, 7);
+'        SP_Parameter.Direction = System.Data.ParameterDirection.Input;
+'        SP_Parameter.Value = "H598218";
+'        SP_Parameter = sqlCommand.Parameters.Add("@ReturnCode", System.Data.SqlDbType.Int);
+'        SP_Parameter.Direction = System.Data.ParameterDirection.Output;
+'				Other types available
+'				SP_Parameter = sqlCommand.Parameters.Add(me.I_UDA, System.Data.SqlDbType.int);	
+'				SP_Parameter = sqlCommand.Parameters.Add(me.I_UDA, System.Data.SqlDbType.float);	
+'				SP_Parameter = sqlCommand.Parameters.Add(me.I_UDA, System.Data.SqlDbType.datetime);	
+
+' Setup input parameters
+
+'SP_Parameter = sqlCommand.Parameters.Add("@ReturnCode", System.Data.SqlDbType.nvarchar, StringLen(me.O_ReturnCode));
+'SP_Parameter.Direction = System.Data.ParameterDirection.Output;
+'SP_Parameter.Value = me.O_ReturnCode;
+
+SP_Parameter = sqlCommand.Parameters.Add("@IMESServer", System.Data.SqlDbType.nvarchar, StringLen(me.I_IMESServer));
+SP_Parameter.Direction = System.Data.ParameterDirection.Input;
+SP_Parameter.Value = me.I_IMESServer;
+
+SP_Parameter = sqlCommand.Parameters.Add("@IMESDatabase", System.Data.SqlDbType.nvarchar, StringLen(me.I_IMESDatabase));
+SP_Parameter.Direction = System.Data.ParameterDirection.Input;
+SP_Parameter.Value = me.I_IMESDatabase;
+
+
+If StringTrim(StringUpper(me.SP_CallType),3) == "READER" Then
+	
+	sqlReader = sqlCommand.ExecuteReader(); 
+	j = 0;
+	LogMessage("DataReader HasRows = " + sqlReader.HasRows);
+	LogMessage("DataReader FieldCount = " + sqlReader.FieldCount);
+	me.ReaderFieldCount = sqlReader.FieldCount;
+	If sqlReader.HasRows Then 
+		While sqlReader.Read()
+			j = j + 1;
+			
+			' Set the dimension1 size to the current row number	
+			me.P_QC_Disposition_Desc.Dimension1 = j;
+			me.P_AllowFreeFormDispDesc.Dimension1 = j;
+
+				' Set custom UDA values for each of the response elements in the UDA	
+			me.P_QC_Disposition_Desc[j] = 				sqlReader("QC_Disposition_Desc");
+			me.P_AllowFreeFormDispDesc[j] = 				sqlReader("AllowFreeFormDispDesc");
+
+		Endwhile;
+	Else
+		logmessage("DataReader returned ZERO rows - no values set");
+	Endif;
+
+	me.ReaderRowCount = j;
+	sqlReader.Close(); 
+	LogMessage("SQL Method Reader Executed");
+
+	If j &gt; 0 Then
+		logmessage("SPROC DataReader returned " + StringFromIntg(j, 10) + " rows");
+	Else
+		logmessage("No Data returned by SPROC");
+	EndIf;
+
+Endif;
+
+
+If StringTrim(StringUpper(me.SP_CallType),3) == "NONQUERY" Then 
+
+	' RETURNS NUMBER OF ROWS AFFECTED
+	logmessage("Executing NONQUERY");
+	me.NonQueryRowsAffected = sqlCommand.ExecuteNonQuery();
+	logmessage("NONQUERY complete, Rows Affected = " + StringFromIntg(me.NonQueryRowsAffected, 3));
+
+Endif;
+
+If StringTrim(StringUpper(me.SP_CallType),3) == "SCALAR" Then
+
+	' RETURNS FIRST COLUMN OF FIRST ROW RETURNED BY QUERY (one P_ only)
+	logmessage("Executing SCALAR");
+	
+	' SAMPLE ONLY - SET OWN UDA me.P_Acceptable_Max_Value = sqlCommand.ExecuteScalar();
+	
+	logmessage("SCALAR complete");
+Endif;
+
+' Clean up connection and command
+sqlConnection.Close();
+sqlCommand.Dispose();
+
+
+'Clear old input parameters in case of error
+'Clear old input/output parameters in case of error
+me.I_IMESServer = "";
+me.I_IMESDatabase = "";
+me.O_ReturnCode = "";
+
+' DONE - set success to true
+me.bFunction.Success = true;
